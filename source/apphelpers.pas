@@ -457,7 +457,10 @@ var
 
 implementation
 
-uses main;
+uses main
+{$if defined(LINUX) and (defined(LCLQt5) or defined(LCLQt6))}
+  , platformtheme
+{$endif};
 
 
 
@@ -1510,11 +1513,42 @@ begin
     VT.EndUpdate;
   end;
   VT.DefaultText := '-'; // "Node" by default
-  {$IFNDEF WINDOWS}
-  // Disable grid lines, looks ok on Windows with dotted light lines, but not on macOS and Linux
-  if (toHotTrack in VT.TreeOptions.PaintOptions) then
-    VT.TreeOptions.PaintOptions := VT.TreeOptions.PaintOptions - [toShowHorzGridLines, toShowVertGridLines];
+
+  {$IFDEF LINUX}
+    {$if defined(LCLQt) or defined(LCLQt5) or defined(LCLQt6)}
+  if VT is THeidiVirtualStringTree then begin
+    VT.LineStyle := lsSolid;
+    VT.Colors.TreeLineColor := clGray;
+
+    if toUseExplorerTheme in VT.TreeOptions.PaintOptions then
+      VT.TreeOptions.PaintOptions := VT.TreeOptions.PaintOptions + [toHotTrack]
+    else
+      VT.TreeOptions.PaintOptions := VT.TreeOptions.PaintOptions - [toHotTrack];
+    THeidiVirtualStringTree(VT).ConfigureQtHotTrack(
+      toUseExplorerTheme in VT.TreeOptions.PaintOptions);
+
+    THeidiVirtualStringTree(VT).ConfigureQtGridLines(
+      toShowHorzGridLines in VT.TreeOptions.PaintOptions,
+      toShowVertGridLines in VT.TreeOptions.PaintOptions);
+    if (toShowHorzGridLines in VT.TreeOptions.PaintOptions) or
+      (toShowVertGridLines in VT.TreeOptions.PaintOptions) then
+      VT.Colors.GridLineColor := clGray;
+    VT.TreeOptions.PaintOptions := VT.TreeOptions.PaintOptions -
+      [toShowHorzGridLines, toShowVertGridLines];
+  end;
+    {$else}
+  if not IsResultGrid then
+    VT.TreeOptions.PaintOptions := VT.TreeOptions.PaintOptions -
+      [toShowHorzGridLines, toShowVertGridLines];
+    {$endif}
+  {$ELSE}
+    {$IFNDEF WINDOWS}
+  if not IsResultGrid then
+    VT.TreeOptions.PaintOptions := VT.TreeOptions.PaintOptions -
+      [toShowHorzGridLines, toShowVertGridLines];
+    {$ENDIF}
   {$ENDIF}
+
   VT.OnGetHint := MainForm.AnyGridGetHint;
   VT.OnScroll := MainForm.AnyGridScroll;
   VT.OnMouseWheel := MainForm.AnyGridMouseWheel;
@@ -1522,7 +1556,6 @@ begin
 
   if IsResultGrid then begin
     VT.Colors.GridLineColor := clGray; // 50% black grid lines, should fit on both light and dark theme
-    VT.HintMode := hmHint; // Show cell contents with linebreakds in datagrid and querygrid's
     if AppSettings.ReadBool(asIncrementalSearch) then begin
       // Apply case insensitive incremental search event
       VT.IncrementalSearch := isInitializedOnly;
@@ -1531,9 +1564,21 @@ begin
     else begin
       VT.IncrementalSearch := isNone;
     end;
-  end
+  end;
+
+  {$IFDEF LINUX}
+    {$if defined(LCLQt) or defined(LCLQt5) or defined(LCLQt6)}
+  if (VT is THeidiVirtualStringTree) and
+    (toGridExtensions in VT.TreeOptions.MiscOptions) then
+    VT.HintMode := hmHint
   else
-    VT.HintMode := hmTooltip; // Just a quick tooltip for clipped nodes
+    {$endif}
+  {$ENDIF}
+  if IsResultGrid then
+    VT.HintMode := hmHint
+  else
+    VT.HintMode := hmTooltip;
+
   VT.OnStartOperation := Mainform.AnyGridStartOperation;
   VT.OnEndOperation := Mainform.AnyGridEndOperation;
   VT.BorderStyle := bsNone; // Cosmetic
@@ -2851,8 +2896,11 @@ begin
   Result := uDarkStyleParams.IsDarkModeEnabled;
   {$ENDIF}
   {$IFDEF LINUX}
-  // Not yet possible to detect the system's dark mode. Ideas welcome.
+  {$if defined(LCLQt5) or defined(LCLQt6)}
+  Result := PlatformThemeIsDark(AppSettings.ReadInt(asThemeMode));
+  {$else}
   Result := False;
+  {$endif}
   {$ENDIF}
   {$IFDEF DARWIN}
   // Detect system's dark mode on macOS
@@ -3617,13 +3665,22 @@ begin
   InitSetting(asLogFileDdl,                       'LogFileDdl',                            0, False, '', True);
   InitSetting(asLogFileDml,                       'LogFileDml',                            0, False, '', True);
   InitSetting(asLogFilePath,                      'LogFilePath',                           0, False, DirnameUserAppData + 'Logs'+PathDelim+'%session'+PathDelim+'%db'+PathDelim+'%y%m%d.sql', True);
+  {$IFDEF LINUX}
+  // Use generic fontconfig families on Linux.
+  InitSetting(asFontName,                         'FontName',                              0, False, 'monospace');
+  {$ELSE}
   if Screen.Fonts.IndexOf('Consolas') > -1 then
     InitSetting(asFontName,                       'FontName',                              0, False, 'Consolas')
   else
     InitSetting(asFontName,                       'FontName',                              0, False, 'Courier New');
+  {$ENDIF}
   InitSetting(asFontSize,                         'FontSize',                              9);
   InitSetting(asTabWidth,                         'TabWidth',                              3);
+  {$IFDEF LINUX}
+  InitSetting(asDataFontName,                     'DataFontName',                          0, False, 'sans-serif');
+  {$ELSE}
   InitSetting(asDataFontName,                     'DataFontName',                          0, False, 'Tahoma');
+  {$ENDIF}
   InitSetting(asDataFontSize,                     'DataFontSize',                          8);
   InitSetting(asDataLocalNumberFormat,            'DataLocalNumberFormat',                 0, True);
   InitSetting(asLowercaseHex,                     'LowercaseHex',                          0, True);
@@ -4191,6 +4248,15 @@ var
   B: Boolean;
 begin
   Read(Index, FormatName, adString, I, B, Result, 0, False, Default);
+  {$IFDEF LINUX}
+  // Keep imported font settings portable.
+  if FormatName.IsEmpty then begin
+    if (Index = asFontName) and (not SameText(Result, 'monospace')) and (Screen.Fonts.IndexOf(Result) < 0) then
+      Result := 'monospace'
+    else if (Index = asDataFontName) and (not SameText(Result, 'sans-serif')) and (Screen.Fonts.IndexOf(Result) < 0) then
+      Result := 'sans-serif';
+  end;
+  {$ENDIF}
 end;
 
 

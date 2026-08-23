@@ -1234,10 +1234,10 @@ type
     procedure menuCopyColumnNamesClick(Sender: TObject);
     procedure menuCloseTabOnDblClickClick(Sender: TObject);
     procedure TimerRefreshTimer(Sender: TObject);
-    procedure SynMemoQuerySpecialLineColors(Sender: TObject; Line: Integer;
-      var Special: Boolean; var FG, BG: TColor);
-    procedure SynMemoSQLLogSpecialLineColors(Sender: TObject; Line: Integer;
-      var Special: Boolean; var FG, BG: TColor);
+    procedure SynMemoQuerySpecialLineMarkup(Sender: TObject; Line: Integer;
+      var Special: Boolean; Markup: TSynSelectedColor);
+    procedure SynMemoSQLLogSpecialLineMarkup(Sender: TObject; Line: Integer;
+      var Special: Boolean; Markup: TSynSelectedColor);
     procedure actSequalSuggestExecute(Sender: TObject);
     procedure menuQueryExactRowCountClick(Sender: TObject);
     procedure menuCloseTabOnMiddleClickClick(Sender: TObject);
@@ -7403,8 +7403,8 @@ begin
 end;}
 
 
-procedure TMainForm.SynMemoQuerySpecialLineColors(Sender: TObject;
-  Line: Integer; var Special: Boolean; var FG, BG: TColor);
+procedure TMainForm.SynMemoQuerySpecialLineMarkup(Sender: TObject;
+  Line: Integer; var Special: Boolean; Markup: TSynSelectedColor);
 var
   Edit: TSynMemo;
   Tab: TQueryTab;
@@ -7416,14 +7416,14 @@ begin
     Exit;
   if Line = Tab.ErrorLine then begin
     Special := True;
-    FG := ErrorLineForeground;
-    BG := ErrorLineBackground;
+    Markup.Foreground := ErrorLineForeground;
+    Markup.Background := ErrorLineBackground;
   end;
 end;
 
 
-procedure TMainForm.SynMemoSQLLogSpecialLineColors(Sender: TObject;
-  Line: Integer; var Special: Boolean; var FG, BG: TColor);
+procedure TMainForm.SynMemoSQLLogSpecialLineMarkup(Sender: TObject;
+  Line: Integer; var Special: Boolean; Markup: TSynSelectedColor);
 var
   Edit: TSynMemo;
   LineText, Search: String;
@@ -7436,23 +7436,23 @@ begin
   //Logsql(LineText+' ::: '+Search);
   if LineText.Contains(Search) then begin
     Special := True;
-    FG := ErrorLineForeground;
-    BG := ErrorLineBackground;
+    Markup.Foreground := ErrorLineForeground;
+    Markup.Background := ErrorLineBackground;
   end
   else if LineText.Contains(_(SLogPrefixWarning)+':') then begin
     Special := True;
-    FG := WarningLineForeground;
-    BG := WarningLineBackground;
+    Markup.Foreground := WarningLineForeground;
+    Markup.Background := WarningLineBackground;
   end
   else if LineText.Contains(_(SLogPrefixNote)+':') then begin
     Special := True;
-    FG := NoteLineForeground;
-    BG := NoteLineBackground;
+    Markup.Foreground := NoteLineForeground;
+    Markup.Background := NoteLineBackground;
   end
   else if LineText.Contains(_(SLogPrefixInfo)+':') then begin
     Special := True;
-    FG := InfoLineForeground;
-    BG := InfoLineBackground;
+    Markup.Foreground := InfoLineForeground;
+    Markup.Background := InfoLineBackground;
   end;
 end;
 
@@ -12658,7 +12658,7 @@ begin
   QueryTab.Memo.Font.Assign(SynMemoQuery.Font);
   QueryTab.Memo.LineHighlightColor.Background := SynMemoQuery.LineHighlightColor.Background;
   QueryTab.Memo.OnStatusChange := SynMemoQuery.OnStatusChange;
-  QueryTab.Memo.OnSpecialLineColors := SynMemoQuery.OnSpecialLineColors;
+  QueryTab.Memo.OnSpecialLineMarkup := SynMemoQuery.OnSpecialLineMarkup;
   QueryTab.Memo.OnDragDrop := SynMemoQuery.OnDragDrop;
   QueryTab.Memo.OnDragOver := SynMemoQuery.OnDragOver;
   QueryTab.Memo.OnDropFiles := SynMemoQuery.OnDropFiles;
@@ -12704,7 +12704,7 @@ begin
   QueryTab.filterHelpers.OnChange := filterQueryHelpers.OnChange;
   QueryTab.filterHelpers.OnButtonClick := filterQueryHelpers.OnButtonClick;
 
-  QueryTab.treeHelpers := TVirtualStringTree.Create(QueryTab.pnlHelpers);
+  QueryTab.treeHelpers := CreateVirtualStringTree(QueryTab.pnlHelpers);
   QueryTab.treeHelpers.Name := treeQueryHelpers.Name + i.ToString;
   QueryTab.treeHelpers.Parent := QueryTab.pnlHelpers;
   QueryTab.treeHelpers.Align := treeQueryHelpers.Align;
@@ -15536,7 +15536,8 @@ begin
       Memo.Text := Content
     else
       Memo.SelText := Content;
-    Memo.SelStart := Memo.SelEnd;
+    Memo.CaretXY := Memo.BlockEnd;
+    Memo.ClearSelection;
     Memo.Modified := False;
     MemoFilename := Filepath;
     FileEncoding := MainForm.GetEncodingName(Encoding);
@@ -15884,7 +15885,7 @@ begin
   inherited Create;
   QueryTab := AOwner;
   OrgGrid := Mainform.QueryGrid;
-  Grid := TVirtualStringTree.Create(QueryTab.TabSheet);
+  Grid := CreateVirtualStringTree(QueryTab.TabSheet);
   Grid.Parent := QueryTab.TabSheet;
   Grid.Tag := OrgGrid.Tag;
   Grid.BorderStyle := OrgGrid.BorderStyle;

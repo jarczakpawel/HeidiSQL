@@ -438,8 +438,34 @@ begin
 end;
 
 
+{$IFDEF LINUX}
+function EnumMonoFontFamilies(
+  var LogFont: TEnumLogFontEx;
+  var Metric: TNewTextMetricEx;
+  FontType: LongInt;
+  Data: LParam
+): LongInt; stdcall;
+var
+  FontList: TStringList;
+  FontName: String;
+begin
+  FontList := TStringList(PtrInt(Data));
+  FontName := LogFont.elfLogFont.lfFaceName;
+  if not FontName.IsEmpty then
+    FontList.Add(FontName);
+  Result := 1;
+end;
+{$ENDIF}
+
+
 // List monospace fonts
 procedure TfrmPreferences.GetMonoFonts(const AList: TStrings);
+{$IFDEF LINUX}
+var
+  DC: HDC;
+  LogFont: TLogFont;
+  FontList: TStringList;
+{$ELSE}
 const
   TestChars = 'ilMW 0';
 var
@@ -448,8 +474,29 @@ var
   i: Integer;
   w0, w: Integer;
   IsMono: Boolean;
+{$ENDIF}
 begin
   AList.Clear;
+  {$IFDEF LINUX}
+  FillChar(LogFont, SizeOf(LogFont), 0);
+  LogFont.lfCharSet := DEFAULT_CHARSET;
+  LogFont.lfPitchAndFamily := FIXED_PITCH;
+
+  FontList := TStringList.Create;
+  FontList.Sorted := True;
+  FontList.Duplicates := dupIgnore;
+  DC := GetDC(0);
+  try
+    EnumFontFamiliesEx(DC, @LogFont, @EnumMonoFontFamilies, PtrInt(FontList), 0);
+    AList.Assign(FontList);
+  finally
+    ReleaseDC(0, DC);
+    FontList.Free;
+  end;
+
+  if AList.IndexOf('monospace') < 0 then
+    AList.Insert(0, 'monospace');
+  {$ELSE}
   Bmp := TBitmap.Create;
   try
     for FName in Screen.Fonts do begin
@@ -474,6 +521,7 @@ begin
   finally
     Bmp.Free;
   end;
+  {$ENDIF}
 end;
 
 
@@ -499,6 +547,7 @@ var
 begin
   Width := AppSettings.ReadInt(asPreferencesWindowWidth);
   Height := AppSettings.ReadInt(asPreferencesWindowHeight);
+  FixVT(TreeShortcutItems);
 
   // General tab
   editTerminal.Enabled := {$IFDEF WINDOWS} False {$ELSE} True {$ENDIF};
@@ -514,7 +563,7 @@ begin
       comboGUIFont.Items.Add(Screen.Fonts[i]);
   end;
 
-  {$IFDEF WINDOWS}
+  {$if defined(WINDOWS) or (defined(LINUX) and (defined(LCLQt5) or defined(LCLQt6)))}
   comboTheme.Items.Add(_('Automatic, depending on system settings'));
   comboTheme.Items.Add(_('Light'));
   comboTheme.Items.Add(_('Dark'));
@@ -681,6 +730,10 @@ begin
     if not Screen.Fonts[i].StartsWith('@') then
       comboDataFontName.Items.Add(Screen.Fonts[i]);
   end;
+  {$IFDEF LINUX}
+  if comboDataFontName.Items.IndexOf('sans-serif') < 0 then
+    comboDataFontName.Items.Insert(0, 'sans-serif');
+  {$ENDIF}
   comboDataFontName.ItemIndex := comboDataFontName.Items.IndexOf(AppSettings.ReadString(asDataFontName));
   spinDataFontSize.Value := AppSettings.ReadInt(asDataFontSize);
   spinMaxQueryResults.Value := AppSettings.ReadINt(asMaxQueryResults);
